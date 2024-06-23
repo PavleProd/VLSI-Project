@@ -43,8 +43,7 @@ module top;
     initial begin
         clk = 1'b0;
         forever begin
-            #5;
-            clk = ~clk;
+            #5 clk = ~clk;
         end
     end
 
