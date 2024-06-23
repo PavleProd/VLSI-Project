@@ -13,7 +13,7 @@ module top;
         // alu
         for(i = 0; i < 2 ** 11; i = i + 1) begin
             {oc, a, b} = i;
-            #5;
+            #2;
         end
         $stop; // ne zaustavlja simulaciju, samo je pauzira. Mozemo pokrenuti opet sa run -all
     end
