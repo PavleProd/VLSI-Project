@@ -3,13 +3,13 @@ module register (
     input rst_n,
     input cl, // clear
     input ld, // load
-    input [3:0] in,
     input inc, // increment 
     input dec, // decrement
     input sr, // shift right
     input ir, // information right, bit koji se ubacuje prilikom sr
     input sl, // shift left
     input il, // information left, bit koji se ubacuje prilikom sl
+    input [3:0] in,
     output [3:0] out
 );
 
