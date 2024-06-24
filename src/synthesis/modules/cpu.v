@@ -433,7 +433,7 @@ module cpu #(
                         state_next = LOAD_OPC_DIRECT;
                     end
                     default:
-                        state_next = LOAD_IR_HIGH_REQUEST;
+                        state_next = LOAD_IR_HIGH_REQUEST; // GRESKA
                 endcase
             end
             LOAD_OPC_DIRECT: begin
@@ -463,6 +463,7 @@ module cpu #(
                         state_next = WRITE_OPC;
                     end
                     default: 
+                        state_next = LOAD_IR_HIGH_REQUEST; // GRESKA
                 endcase
             end
             WRITE_OPA_DIRECT: begin
