@@ -240,11 +240,18 @@ module cpu #(
     localparam LOAD_OPC_DONE = 15;
 
     // Upis Operanada
-    localparam WRITE_OPA_REQUEST = 16;
-    localparam WRITE_OPA = 17;
-    localparam WRITE_OPA_DONE = 18;
+    localparam WRITE_OPA = 16;
+    localparam WRITE_OPA_DONE = 17;
+    localparam WRITE_OPB = 18;
+    localparam WRITE_OPB_DONE = 19;
+    localparam WRITE_OPC = 20;
+    localparam WRITE_OPC_DONE = 21;
 
-    localparam STOP = 19; // kraj programa
+    // Instrukcije
+    localparam INSTR_MOV = 22;
+    localparam INSTR_ALU = 23;
+
+    localparam INSTR_STOP = 24; // kraj programa
 
     integer state_reg, state_next;
     reg mem_we_reg, mem_we_next;
@@ -295,7 +302,7 @@ module cpu #(
         out_next = out_reg;
 
         // reset svih signala
-        { pc_ld, pc_inc, ir_high_ld, ir_low_ld, opa_ld, opb_ld, opC_ld } = 7'd0;
+        { pc_ld, pc_inc, ir_high_ld, ir_low_ld, opa_ld, opb_ld, opc_ld } = 7'd0;
 
         case (state_reg)
             INIT: begin
@@ -323,10 +330,10 @@ module cpu #(
                         if(ir_opc_type)
                             state_next = LOAD_IR_LOW;
                         else
-                            state_next = LOAD_OPB;
+                            state_next = LOAD_OPB_DIRECT;
                     end
                     OC_ADD, OC_SUB, OC_MUL: begin
-                        state_next = LOAD_OPB;
+                        state_next = LOAD_OPB_DIRECT;
                     end
                     OC_IN: begin
                         state_next = WRITE_OP;
@@ -339,17 +346,17 @@ module cpu #(
                             state_next = LOAD_OPA_DIRECT;
                         end
                         else if(ir_opb) begin
-                            state_next = LOAD_OPB;
+                            state_next = LOAD_OPB_DIRECT;
                         end
                         else if(ir_opc) begin
-                            state_next = LOAD_OPC;
+                            state_next = LOAD_OPC_DIRECT;
                         end
                         else begin
-                            state_next = STOP;
+                            state_next = INSTR_STOP;
                         end
                     end
                     default:
-                        state_next = STOP; // DIV trenutno ne radi nista
+                        state_next = LOAD_IR_HIGH_REQUEST; // DIV trenutno ne radi nista
                 endcase
             end
             LOAD_IR_LOW: begin
@@ -388,11 +395,78 @@ module cpu #(
                 opa_ld = 1'b1;
                 opa_in = mem_in;
 
-                // out i stop instrukcije
-                state_next = WRITE_OPA;
+                case (ir_oc)
+                    OC_OUT, OC_STOP: begin
+                        state_next = WRITE_OPA;
+                    end 
+                    default:
+                        state_next = LOAD_IR_HIGH_REQUEST; // GRESKA
+                endcase
+            end
+            LOAD_OPB_DIRECT: begin
+                mem_we_next = 1'b0;
+                mem_addr_next = ir_opa;
+
+                if(ir_opb_type)
+                    state_next = LOAD_OPA_INDIRECT;
+                else
+                    state_next = LOAD_OPB_DONE;
+            end
+            LOAD_OPB_INDIRECT: begin
+                mem_we_next = 1'b0;
+                mem_addr_next = mem_in;
+
+                state_next = LOAD_OPB_DONE; 
+            end
+            LOAD_OPB_DONE: begin
+                opb_ld = 1'b1;
+                opb_in = mem_in;
+
+                case (ir_oc)
+                    OC_MOV: begin
+                        state_next = INSTR_MOV;
+                    end 
+                    OC_STOP: begin
+                        state_next = WRITE_OPB;
+                    end
+                    OC_ADD, OC_SUB, OC_MUL: begin
+                        state_next = LOAD_OPC_DIRECT;
+                    end
+                    default:
+                        state_next = LOAD_IR_HIGH_REQUEST;
+                endcase
+            end
+            LOAD_OPC_DIRECT: begin
+                mem_we_next = 1'b0;
+                mem_addr_next = ir_opc;
+
+                if(ir_opc_type)
+                    state_next = LOAD_OPC_INDIRECT;
+                else
+                    state_next = LOAD_OPC_DONE;
+            end
+            LOAD_OPC_INDIRECT: begin
+                mem_we_next = 1'b0;
+                mem_addr_next = mem_in;
+
+                state_next = LOAD_OPC_DONE; 
+            end
+            LOAD_OPC_DONE: begin
+                opc_ld = 1'b1;
+                opc_in = mem_in;
+
+                case (ir_oc)
+                    OC_ADD, OC_SUB, OC_MUL: begin
+                        state_next = INSTR_ALU;
+                    end 
+                    OC_STOP: begin
+                        state_next = WRITE_OPC;
+                    end
+                    default: 
+                endcase
             end
             default: 
-                state_next = STOP;
+                state_next = LOAD_IR_HIGH_REQUEST; // GRESKA
         endcase
     end
 
