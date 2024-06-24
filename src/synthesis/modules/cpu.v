@@ -96,6 +96,9 @@ module cpu #(
         .in(ir_high_in),
         .out(ir_high_out));
 
+    localparam DIRECT = 1'b0;
+    localparam INDIRECT = 1'b1;
+
     assign ir_oc = ir_high[IR_HIGH_WIDTH - 1: IR_HIGH_WIDTH - 4];
     assign ir_opa_type = ir_high[IR_HIGH_WIDTH - 5];
     assign ir_opa = ir_high[IR_HIGH_WIDTH - 6 : IR_HIGH_WIDTH - 8];
@@ -240,18 +243,15 @@ module cpu #(
     localparam LOAD_OPC_DONE = 15;
 
     // Upis Operanada
-    localparam WRITE_OPA = 16;
-    localparam WRITE_OPA_DONE = 17;
-    localparam WRITE_OPB = 18;
-    localparam WRITE_OPB_DONE = 19;
-    localparam WRITE_OPC = 20;
-    localparam WRITE_OPC_DONE = 21;
+    localparam WRITE_OPA_DIRECT = 16;
+    localparam WRITE_OPA_INDIRECT = 17;
+    localparam WRITE_OPA_DONE = 18;
 
     // Instrukcije
-    localparam INSTR_MOV = 22;
-    localparam INSTR_ALU = 23;
+    localparam INSTR_MOV = 19;
+    localparam INSTR_ALU = 20;
 
-    localparam INSTR_STOP = 24; // kraj programa
+    localparam INSTR_STOP = 21; // kraj programa
 
     integer state_reg, state_next;
     reg mem_we_reg, mem_we_next;
@@ -380,7 +380,7 @@ module cpu #(
                 mem_we_next = 1'b0;
                 mem_addr_next = ir_opa;
 
-                if(ir_opa_type)
+                if(ir_opa_type == INDIRECT)
                     state_next = LOAD_OPA_INDIRECT;
                 else
                     state_next = LOAD_OPA_DONE;
@@ -407,7 +407,7 @@ module cpu #(
                 mem_we_next = 1'b0;
                 mem_addr_next = ir_opa;
 
-                if(ir_opb_type)
+                if(ir_opb_type == INDIRECT)
                     state_next = LOAD_OPA_INDIRECT;
                 else
                     state_next = LOAD_OPB_DONE;
@@ -440,7 +440,7 @@ module cpu #(
                 mem_we_next = 1'b0;
                 mem_addr_next = ir_opc;
 
-                if(ir_opc_type)
+                if(ir_opc_type == INDIRECT)
                     state_next = LOAD_OPC_INDIRECT;
                 else
                     state_next = LOAD_OPC_DONE;
@@ -464,6 +464,40 @@ module cpu #(
                     end
                     default: 
                 endcase
+            end
+            WRITE_OPA_DIRECT: begin
+
+                mem_addr_next = ir_opa;
+
+                if(ir_opa_type == INDIRECT) begin
+                    mem_we_next = 1'b0;
+                    state_next = WRITE_OPA_INDIRECT;
+                end
+                else begin
+                    mem_we_nect = 1'b1;
+                    
+                    if(ir_opc_type == INDIRECT)
+                        mem_data_next = ir_low_out;
+                    else
+                        mem_data_next = opb_out;
+
+                    state_next = WRITE_OPA_DONE;
+                end
+                    
+                
+            end
+            WRITE_OPA_INDIRECT: begin
+                mem_we_next = 1'b1;
+                mem_addr_next = mem_in;
+                
+                if(ir_opc_type == INDIRECT)
+                    mem_data_next = ir_low_out;
+                else
+                    mem_data_next = opb_out;
+            end
+            WRITE_OPA_DONE: begin
+                out_next = mem_in;
+                state_next = LOAD_IR_HIGH_REQUEST;
             end
             default: 
                 state_next = LOAD_IR_HIGH_REQUEST; // GRESKA
