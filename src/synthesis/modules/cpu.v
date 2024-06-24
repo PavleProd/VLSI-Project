@@ -161,24 +161,6 @@ module cpu #(
     localparam OC_STOP = 4'b1111;
     // ---------------------------------
 
-    /*
-    // STATE MACHINE
-    localparam STATE_INIT = 4'h0; // stanje posle reseta, radimo inicijalizaciju vrednosti
-    localparam STATE_MOV2 = 4'h1; // MEM[op1] = MEM[op2], op3 == 0000
-    localparam STATE_MOVC = 4'h2; // MEM[op1] = C, op3 = 1000
-    localparam STATE_IN = 4'h3; // MEM[op1] = in;
-    localparam STATE_OUT = 4'h4; // out = MEM[op1];
-    localparam STATE_ADD = 4'h5; // MEM[op1] = MEM[op2] + MEM[op3];
-    localparam STATE_SUB = 4'h6; // MEM[op1] = MEM[op2] - MEM[op3];
-    localparam STATE_MUL = 4'h7; // MEM[op1] = MEM[op2] * MEM[op3];
-    localparam STATE_DIV = 4'h8; // MEM[op1] = MEM[op2] / MEM[op3];
-    localparam STOP = 4'h9;
-    // STOP1 > STOP2 > STOP3 po prioritetu
-    localparam STOP1 = 4'h10; // stop, out = mem[op1];
-    localparam STOP2 = 4'h11; // stop, out = mem[op2];
-    localparam STOP = 4'h12; // stop, out = mem[op3];
-    */
-
     // STATE MACHINE
     localparam INIT = 0; // stanje posle reseta, radimo inicijalizaciju vrednosti
     localparam LOAD_IR_HIGH = 1; // citanje vise reci IR registra sa trenutne vrednosti PC
@@ -187,8 +169,13 @@ module cpu #(
     localparam LOAD_IR_LOW = 4; // citanje nize reci IR registra sa trenutne vrednosti PC
     localparam LOAD_IR_LOW_WAIT = 5;
     localparam LOAD_IR_LOW_DONE = 6;
-    localparam LOAD_OP_DIR = 7;
-    localparam LOAD_OP_IND = 8;
+    localparam LOAD_OP = 7;
+    localparam LOAD_OP_WAIT = 8;
+    localparam LOAD_OP_DONE = 9;
+    localparam WRITE_OP = 10;
+    localparam WRITE_OP_WAIT = 11;
+    localparam WRITE_OP_DONE = 12;
+    localparam STOP = 13;
 
     integer state_reg, state_next;
     reg mem_we_reg, mem_we_next;
@@ -197,7 +184,11 @@ module cpu #(
     reg [DATA_WIDTH-1:0] out_reg, out_next;
 
     // POMOCNI REGISTRI
-    reg op1_load_needed, op2_load_needed, op3_load_needed, c_load_needed;
+    reg [3:0] load_needed; // c, op3, op2, op1
+    localparam OP1_INDEX = 0;
+    localparam OP2_INDEX = 1;
+    localparam OP3_INDEX = 2;
+    localparam C_INDEX = 3;
 
     // SEKVENCIJALNA LOGIKA
     always @(posedge clk, negedge rst_n) begin
@@ -233,20 +224,21 @@ module cpu #(
         out_next = out_reg;
 
         // reset svih signala registara
-        { pc_ld, pc_inc, ir_high_ld } = 4'd0;
+        { pc_ld, pc_inc, ir_high_ld, ir_low_ld } = 4'd0;
 
         case (state_reg)
             INIT: begin
                 pc_ld = 1'b1;
                 pc_in = {(ADDR_WIDTH - 4){1'b0}, 4'd8}; // pocetna vrednost PC = 8
 
-                {op2_load_needed, op3_load_needed, c_load_needed} = 4'b0;
+                load_needed = 4'h0;
 
                 state_next = LOAD_IR_HIGH;
             end
             LOAD_IR_HIGH: begin
                 mem_we_next = 1'b0;
                 mem_addr_next = pc_out;
+                pc_inc = 1'b1; // update PC na sledecu lokaciju
 
                 state_next = LOAD_IR_HIGH_WAIT;
             end
@@ -260,24 +252,60 @@ module cpu #(
                 case (ir_oc)
                     OC_MOV: begin
                         if(ir_op3_type)
-                            c_load_needed = 1'b1;
+                            load_needed[C_INDEX] = 1'b1;
+                            state_next = LOAD_IR_LOW;
                         else
-                            op2_load_needed = 1'b1;
+                            load_needed[OP2_INDEX] = 1'b1;
+                            state_next = LOAD_OP;
                     end
                     OC_OUT: begin
-                        op1_load_needed = 1'b1;
+                        load_needed[OP1_INDEX] = 1'b1;
+                        state_next = LOAD_OP;
+                    end
+                    OC_IN: begin
+                        state_next = WRITE_OP;
                     end
                     OC_ADD, OC_SUB, OC_MUL: begin
-                        op2_load_needed = 1'b1;
-                        op3_load_needed = 1'b1;
+                        load_needed[OP2_INDEX] = 1'b1;
+                        load_needed[OP3_INDEX] = 1'b1;
+                        state_next = LOAD_OP;
                     end
                     OC_STOP: begin
-                        op1_load_needed = (op1 != 4'h0) ? 1'b1 : 1'b0;
-                        op2_load_needed = (op2 != 4'h0) ? 1'b1 : 1'b0;
-                        op3_load_needed = (op3 != 4'h0) ? 1'b1 : 1'b0;
+                        if(op1) begin
+                            load_needed[OP1_INDEX] = 1'b1;
+                            state_next = LOAD_OP;
+                        end
+                        else if(op2) begin
+                            load_needed[OP2_INDEX] = 1'b1;
+                            state_next = LOAD_OP;
+                        end
+                        else if(op3) begin
+                            load_needed[OP3_INDEX] = 1'b1;
+                            state_next = LOAD_OP;
+                        end
+                        else begin
+                            state_next = STOP;
+                        end
                     end
                     default: 
                 endcase
+            end
+            LOAD_IR_LOW begin
+                mem_we_next = 1'b0;
+                mem_addr_next = pc_out;
+                pc_inc = 1'b1; // update PC na sledecu lokaciju
+
+                state_next = LOAD_IR_LOW_WAIT;
+            end
+            LOAD_IR_LOW_WAIT begin
+                ir_low_ld = 1'b1;
+                ir_low_in = mem_in;
+
+                state_next = LOAD_IR_HIGH_DONE;
+            end
+            LOAD_IR_LOW_DONE begin
+                // trenutno samo MOV operacija ima citanje IR_LOW
+                state_next = WRITE_OP;
             end
                 
 
