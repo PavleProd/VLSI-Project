@@ -1,6 +1,6 @@
 module memory #(
 	parameter FILE_NAME = "mem_init.mif", // fajl iz kog se inicijalizuje memorija
-    parameter ADDR_WIDTH = 6, // velicina memorije 2^ADDR_WIDTH
+    parameter ADDR_WIDTH = 6, // velicina memorije 2^ADDR_WIDTH memorijskih reci
     parameter DATA_WIDTH = 16 // velicina memorijske reci
 )(
     input clk,
