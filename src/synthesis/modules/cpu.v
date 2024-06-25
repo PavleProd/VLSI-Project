@@ -206,6 +206,23 @@ module cpu #(
         .in(opc_in),
         .out(opc_out));
 
+    // ALU JEDINICA
+    reg [2:0] alu_oc;
+    reg [DATA_WIDTH-1:0] alu_a, alu_b;
+    wire [DATA_WIDTH-1:0] alu_out;
+
+    // mapirani operacioni kodovi
+    localparam ALU_ADD = 3'b000;
+    localparam ALU_SUB = 3'b001;
+    localparam ALU_MUL = 3'b010;
+    localparam ALU_DIV = 3'b011;
+    localparam ALU_NOT = 3'b100;
+    localparam ALU_XOR = 3'b101;
+    localparam ALU_OR = 3'b110;
+    localparam ALU_AND = 3'b111;
+
+    alu #(.DATA_WIDTH(DATA_WIDTH)) alu_unit(.a(alu_a), .b(alu_b), f(alu_f));
+
     // OPERATION CODES
     localparam OC_MOV = 4'b0000;
 
@@ -248,10 +265,8 @@ module cpu #(
     localparam WRITE_OPA_DONE = 18;
 
     // Instrukcije
-    localparam INSTR_MOV = 19;
-    localparam INSTR_ALU = 20;
-
-    localparam INSTR_STOP = 21; // kraj programa
+    localparam INSTR_ALU = 19;
+    localparam INSTR_STOP = 20; // kraj programa
 
     integer state_reg, state_next;
     reg mem_we_reg, mem_we_next;
@@ -336,7 +351,7 @@ module cpu #(
                         state_next = LOAD_OPB_DIRECT;
                     end
                     OC_IN: begin
-                        state_next = WRITE_OP;
+                        state_next = WRITE_OPA_DIRECT;
                     end
                     OC_OUT: begin
                         state_next = LOAD_OPA_DIRECT;
@@ -374,7 +389,7 @@ module cpu #(
             end
             LOAD_IR_LOW_DONE: begin
                 // trenutno samo MOV operacija ima citanje IR_LOW
-                state_next = WRITE_OP;
+                state_next = WRITE_OPA_DIRECT;
             end
             LOAD_OPA_DIRECT: begin
                 mem_we_next = 1'b0;
@@ -397,7 +412,7 @@ module cpu #(
 
                 case (ir_oc)
                     OC_OUT, OC_STOP: begin
-                        state_next = WRITE_OPA;
+                        state_next = WRITE_OPA_DIRECT;
                     end 
                     default:
                         state_next = LOAD_IR_HIGH_REQUEST; // GRESKA
@@ -424,7 +439,7 @@ module cpu #(
 
                 case (ir_oc)
                     OC_MOV: begin
-                        state_next = INSTR_MOV;
+                        state_next = WRITE_OPA_DIRECT;
                     end 
                     OC_STOP: begin
                         state_next = WRITE_OPB;
@@ -475,30 +490,89 @@ module cpu #(
                     state_next = WRITE_OPA_INDIRECT;
                 end
                 else begin
-                    mem_we_nect = 1'b1;
+                    mem_we_next = 1'b1;
                     
-                    if(ir_opc_type == INDIRECT)
-                        mem_data_next = ir_low_out;
-                    else
-                        mem_data_next = opb_out;
+                    case (ir_oc)
+                        OC_IN: begin
+                            mem_data_next = in;
+                        end
+                        OC_MOV: begin
+                            if(ir_opc_type == INDIRECT)
+                                mem_data_next = ir_low_out;
+                            else
+                                mem_data_next = opb_out;
+                        end
+                        OC_ADD: OC_SUB, OC_MUL: begin
+                            mem_data_next = alu_out;
+                        end
+                        default:
+                            state_next = LOAD_IR_HIGH_REQUEST; // GRESKA 
+                    endcase
 
                     state_next = WRITE_OPA_DONE;
                 end
-                    
-                
             end
             WRITE_OPA_INDIRECT: begin
                 mem_we_next = 1'b1;
                 mem_addr_next = mem_in;
                 
-                if(ir_opc_type == INDIRECT)
-                    mem_data_next = ir_low_out;
-                else
-                    mem_data_next = opb_out;
+               case (ir_oc)
+                    IN: begin
+                        mem_data_next = in;
+                    end
+                    MOV: begin
+                        if(ir_opc_type == INDIRECT)
+                            mem_data_next = ir_low_out;
+                        else
+                            mem_data_next = opb_out;
+                    end
+                    OC_ADD: OC_SUB, OC_MUL: begin
+                        mem_data_next = alu_out;
+                    end
+                    default:
+                        state_next = LOAD_IR_HIGH_REQUEST; // GRESKA 
+                endcase
             end
             WRITE_OPA_DONE: begin
                 out_next = mem_in;
                 state_next = LOAD_IR_HIGH_REQUEST;
+            end
+            INSTR_ALU: begin
+                alu_a = opb_out;
+                alu_b = opc_out;
+
+                case (ir_oc)
+                    OC_ADD: begin
+                        alu_oc = ALU_ADD;
+                        state_next = WRITE_OPA_DIRECT;
+                    end
+                    OC_SUB: begin
+                        alu_oc = ALU_SUB;
+                        state_next = WRITE_OPA_DIRECT;
+                    end
+                    OC_MUL: begin
+                        alu_oc = ALU_SUB;
+                        state_next = WRITE_OPA_DIRECT;
+                    end
+                    default:
+                        state_next = LOAD_IR_HIGH; // GRESKA
+                endcase 
+            end
+            INSTR_STOP: begin
+                if(ir_opa) begin
+                    out_next = opa_out;
+                end
+                else if(ir_opb) begin
+                    out_next = opb_out;
+                end
+                else if(ir_opc) begin
+                    out_next = oc_out;
+                end
+                else begin
+                    out_next = out_reg; // da bismo prosli kroz svaki slucaj
+                end
+                
+                $finish;
             end
             default: 
                 state_next = LOAD_IR_HIGH_REQUEST; // GRESKA
