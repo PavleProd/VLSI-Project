@@ -15,7 +15,7 @@ module register # (
     output [DATA_WIDTH-1:0] out
 );
 
-    reg [3:0] out_reg, out_next;
+    reg [DATA_WIDTH-1:0] out_reg, out_next;
     assign out = out_reg;
 
     // kombinaciona logika

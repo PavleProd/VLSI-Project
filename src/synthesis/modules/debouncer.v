@@ -4,9 +4,12 @@ module debouncer (
     input in,
     output out
 );
+    reg out_next, out_reg;
     reg [1:0] ff_next, ff_reg;
     reg [7:0] cnt_next, cnt_reg;
     assign out = out_reg;
+
+    wire in_changed, in_stable;
 
     assign in_changed = ff_reg[0] ^ ff_reg[1]; // vrednost na ulazu se promenila
     assign in_stable = (cnt_reg == 8'hFF) ? 1'b1 : 1'b0; // ako je ista vrednost 2^8 - 1 taktova, krecemo da ispisujemo tu vrednost

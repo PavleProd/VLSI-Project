@@ -1,4 +1,4 @@
-module moduleName #(
+module top #(
     parameter DIVISOR = 50_000_000,
     parameter FILE_NAME = "mem_init.mif", // fajl iz kog se inicijalizuje memorija
     parameter ADDR_WIDTH = 6, // velicina memorije 2^ADDR_WIDTH memorijskih reci
@@ -9,15 +9,15 @@ module moduleName #(
     input [2:0] btn,
     input [8:0] sw,
     output [9:0] led,
-    output [27:0] hex;
+    output [27:0] hex
 );
 
     wire clk_out;
     clk_div #(.DIVISOR(DIVISOR)) clk_div_instance (.clk(clk), .rst_n(rst_n), .out(clk_out));
 
-    reg mem_we;
-    reg [ADDR_WIDTH - 1:0] mem_addr;
-    reg [DATA_WIDTH - 1:0] mem_data;
+    wire mem_we;
+    wire [ADDR_WIDTH - 1:0] mem_addr;
+    wire [DATA_WIDTH - 1:0] mem_data;
     wire [DATA_WIDTH - 1:0] mem_out;
 
     memory #(.FILE_NAME(FILE_NAME), .ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH)) mem_instance (
@@ -34,7 +34,7 @@ module moduleName #(
         .clk(clk_out),
         .rst_n(rst_n),
         .mem_in(mem_out),
-        .in({(DATA_WIDTH - 4){1'b0}, sw[3:0]}),
+        .in({{(DATA_WIDTH - 4){1'b0}}, sw[3:0]}),
         .mem_we(mem_we),
         .mem_addr(mem_addr),
         .mem_data(mem_data),
