@@ -490,7 +490,7 @@ module cpu #(
                         state_next = INSTR_OUT;
                     end
                     OC_STOP: begin
-                        state_next = INSTR_STOP;
+                        state_next = STOPA;
                     end 
                     default:
                         //out_next = {{DATA_WIDTH}{1'b0}}; // GRESKA
