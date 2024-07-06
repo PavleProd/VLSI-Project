@@ -24,6 +24,7 @@ module top #(
         .clk(clk_out),
         .we(mem_we),
         .addr(mem_addr),
+        .data(mem_data),
         .out(mem_out)
     );
 
@@ -46,10 +47,10 @@ module top #(
     assign led[4:0] = cpu_out[4:0];
 
     wire [3:0] tens_sp, ones_sp;
-    bcd bcd_sp(sp_out, tens_sp, ones_sp);
+    bcd bcd_sp(sp_out, ones_sp, tens_sp);
 
     wire [3:0] tens_pc, ones_pc;
-    bcd bcd_pc(pc_out, tens_pc, ones_pc);
+    bcd bcd_pc(pc_out, ones_pc, tens_pc);
 
     ssd ssd1(tens_sp, hex[27:21]);
     ssd ssd2(ones_sp, hex[20:14]);

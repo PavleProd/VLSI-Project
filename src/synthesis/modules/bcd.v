@@ -4,6 +4,6 @@ module bcd (
     output [3:0] tens
 );
 
-    assign ones = in % 10;
-    assign tens = in / 10; // moze biti >9 desetica
+    assign tens = in / 6'd10;
+    assign ones = in % 6'd10;
 endmodule

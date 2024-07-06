@@ -25,6 +25,12 @@ module cpu #(
         2. bajt  |                              Konstanta  / Adresa                           |
     */
 
+    //out_next = {{(DATA_WIDTH - 3){1'b0}}, 3'b001}; // za testiranje
+    /*
+    sp_in = mem_in;
+    sp_ld = 1'b1;
+    */
+
     reg null_reg = 1'b0;
 
     // SISTEMSKI REGISTRI
@@ -103,13 +109,13 @@ module cpu #(
     wire [2:0] ir_opa, ir_opb, ir_opc;
     wire ir_opa_type, ir_opb_type, ir_opc_type;
 
-    assign ir_oc = ir_high[IR_HIGH_WIDTH - 1: IR_HIGH_WIDTH - 4];
-    assign ir_opa_type = ir_high[IR_HIGH_WIDTH - 5];
-    assign ir_opa = ir_high[IR_HIGH_WIDTH - 6 : IR_HIGH_WIDTH - 8];
-    assign ir_opb_type = ir_high[IR_HIGH_WIDTH - 9];
-    assign ir_opb = ir_high[IR_HIGH_WIDTH - 10 : IR_HIGH_WIDTH - 12];
-    assign ir_opc_type = ir_high[IR_HIGH_WIDTH - 13];
-    assign ir_opc = ir_high[IR_HIGH_WIDTH - 14 : IR_HIGH_WIDTH - 16];
+    assign ir_oc = ir_high_out[15:12];
+    assign ir_opa_type = ir_high_out[11];
+    assign ir_opa = ir_high_out[10:8];
+    assign ir_opb_type = ir_high_out[7];
+    assign ir_opb = ir_high_out[6:4];
+    assign ir_opc_type = ir_high_out[3];
+    assign ir_opc = ir_high_out[2:0];
 
     // 4. IR LOW
     localparam IR_LOW_WIDTH = DATA_WIDTH;
@@ -236,8 +242,8 @@ module cpu #(
     localparam OC_MUL = 4'b0011;
     localparam OC_DIV = 4'b0100; // ne koristi se
 
-    localparam OC_IN = 4'b0101;
-    localparam OC_OUT = 4'b0110;
+    localparam OC_IN = 4'b0111;
+    localparam OC_OUT = 4'b1000;
 
     localparam OC_STOP = 4'b1111;
     // ---------------------------------
@@ -249,7 +255,7 @@ module cpu #(
     localparam LOAD_IR_HIGH_MEMORY = 6'd1;
     localparam LOAD_IR_HIGH_REGISTER = 6'd2;
     localparam LOAD_IR_HIGH_DONE = 6'd3; 
-    localparam LOAD_IR_LOAD_MEMORY = 6'd4;
+    localparam LOAD_IR_LOW_MEMORY = 6'd4;
     localparam LOAD_IR_LOW_REGISTER = 6'd5;
     localparam LOAD_IR_LOW_DONE = 6'd6;
 
@@ -289,8 +295,8 @@ module cpu #(
     assign mem_data = mem_data_reg;
     assign out = out_reg;
 
-    // 0 - direktno (ako je direktno tu stajemo), 1 - indirektno
-    reg load_phase_reg, load_phase_next;
+    // memoriji treba(trenutno) 2 takta da se ocita, reg == 1 -> cekali smo, reg == 0 -> nismo cekali
+    reg load_memory_wait_reg, load_memory_wait_next;
 
     // SEKVENCIJALNA LOGIKA
     always @(posedge clk, negedge rst_n) begin
@@ -302,7 +308,7 @@ module cpu #(
             mem_data_reg <= {DATA_WIDTH{1'b0}};
             mem_we_reg <= 1'b0;
 
-            load_phase_reg <= 1'b0;
+            load_memory_wait_reg <= 1'b0;
 
             alu_out_reg <= {DATA_WIDTH{1'b0}};
             out_reg <= {DATA_WIDTH{1'b0}};
@@ -314,7 +320,7 @@ module cpu #(
             mem_data_reg <= mem_data_next;
             mem_we_reg <= mem_we_next;
 
-            load_phase_reg <= load_phase_next;
+            load_memory_wait_reg <= load_memory_wait_next;
 
             alu_out_reg <= alu_out_next;
             out_reg <= out_next;
@@ -323,13 +329,16 @@ module cpu #(
 
     // KOMBINACIONA LOGIKA
     always @(*) begin
+        // reset svih signala
+        { pc_ld, sp_ld, pc_inc, ir_high_ld, ir_low_ld, opa_ld, opb_ld, opc_ld } = 8'd0;
+
         state_next = state_reg;
         
-        mem_addr_next = mem_addr_reg;
-        mem_data_next = mem_data_reg;
-        mem_we_next = mem_we_reg;
+        mem_addr_next = {ADDR_WIDTH{1'b0}};
+        mem_data_next = {DATA_WIDTH{1'b0}};
+        mem_we_next = 1'b0;
         
-        load_phase_next = load_phase_reg;
+        load_memory_wait_next = load_memory_wait_reg;
 
         alu_b = {DATA_WIDTH{1'b0}};
         alu_a = {DATA_WIDTH{1'b0}};
@@ -337,6 +346,7 @@ module cpu #(
         alu_out_next = alu_out_reg;
 
         pc_in = 6'd0;
+        sp_in = 6'd0;
         ir_high_in = {DATA_WIDTH{1'b0}};
         ir_low_in = {DATA_WIDTH[1'b0]};
         opa_in = {DATA_WIDTH{1'b0}};
@@ -345,22 +355,34 @@ module cpu #(
 
         out_next = out_reg;
 
-        // reset svih signala
-        { pc_ld, pc_inc, ir_high_ld, ir_low_ld, opa_ld, opb_ld, opc_ld } = 7'd0;
+        sp_in = state_reg;
+        sp_ld = 1'b1;
 
         case (state_reg)
             INIT: begin
                 pc_ld = 1'b1;
                 pc_in = {{(PC_WIDTH - 4){1'b0}}, 4'd8}; // pocetna vrednost PC = 8
 
+                out_next = 1'b0;
+
+                sp_ld = 1'b1;
+                sp_in = {SP_WIDTH{1'b1}}; // poslednja memorijska adresa
+
                 state_next = LOAD_IR_HIGH_MEMORY;
             end
             LOAD_IR_HIGH_MEMORY: begin
-                mem_we_next = 1'b0;
-                mem_addr_next = pc_out;
-                pc_inc = 1'b1; // update PC na sledecu lokaciju
+                if(load_memory_wait_reg == 1'b0) begin
+                    mem_we_next = 1'b0;
+                    mem_addr_next = pc_out;
+                    pc_inc = 1'b1; // update PC na sledecu lokaciju
 
-                state_next = LOAD_IR_HIGH_REGISTER;
+                    load_memory_wait_next = 1'b1;
+                    state_next = LOAD_IR_HIGH_MEMORY;
+                end
+                else begin
+                    load_memory_wait_next = 1'b0;
+                    state_next = LOAD_IR_HIGH_REGISTER;
+                end
             end
             LOAD_IR_HIGH_REGISTER: begin
                 ir_high_ld = 1'b1;
@@ -372,7 +394,7 @@ module cpu #(
                 case (ir_oc)
                     OC_MOV: begin
                         if(ir_opc_type)
-                            state_next = LOAD_IR_LOAD_MEMORY;
+                            state_next = LOAD_IR_LOW_MEMORY;
                         else
                             state_next = LOAD_OPB_MEMORY;
                     end
@@ -380,6 +402,7 @@ module cpu #(
                         state_next = LOAD_OPB_MEMORY;
                     end
                     OC_IN: begin
+                        //out_next = {{(DATA_WIDTH - 3){1'b0}}, 3'b001}; // testiranjeAA
                         state_next = WRITE_OPA_MEMORY;
                     end
                     OC_OUT: begin
@@ -400,15 +423,23 @@ module cpu #(
                         end
                     end
                     default:
+                        //out_next = {{DATA_WIDTH}{1'b0}}; // GRESKA
                         state_next = LOAD_IR_HIGH_MEMORY; // DIV trenutno ne radi nista
                 endcase
             end
-            LOAD_IR_LOAD_MEMORY: begin
-                mem_we_next = 1'b0;
-                mem_addr_next = pc_out;
-                pc_inc = 1'b1; // update PC na sledecu lokaciju
+            LOAD_IR_LOW_MEMORY: begin
+                if(load_memory_wait_reg == 1'b0) begin
+                    mem_we_next = 1'b0;
+                    mem_addr_next = pc_out;
+                    pc_inc = 1'b1; // update PC na sledecu lokaciju
 
-                state_next = LOAD_IR_LOW_REGISTER;
+                    load_memory_wait_next = 1'b1;
+                    state_next = LOAD_IR_LOW_MEMORY;
+                end
+                else begin
+                    load_memory_wait_next = 1'b0;
+                    state_next = LOAD_IR_LOW_REGISTER;
+                end
             end
             LOAD_IR_LOW_REGISTER: begin
                 ir_low_ld = 1'b1;
@@ -421,19 +452,34 @@ module cpu #(
                 state_next = WRITE_OPA_MEMORY;
             end
             LOAD_OPA_MEMORY: begin
-                mem_we_next = 1'b0;
-                mem_addr_next = ir_opa;
+                if(load_memory_wait_reg == 1'b0) begin
+                    mem_we_next = 1'b0;
+                    mem_addr_next = ir_opa;
 
-                if(ir_opa_type == INDIRECT)
-                    state_next = LOAD_OPA_MEMORY_INDIRECT;
-                else
-                    state_next = LOAD_OPA_DONE;
+                    load_memory_wait_next = 1'b1;
+                    state_next = LOAD_OPA_MEMORY;
+                end
+                else begin
+                    load_memory_wait_next = 1'b0;
+                    
+                    if(ir_opa_type == INDIRECT)
+                        state_next = LOAD_OPA_MEMORY_INDIRECT;
+                    else
+                        state_next = LOAD_OPA_DONE;
+                end
             end
             LOAD_OPA_MEMORY_INDIRECT: begin
-                mem_we_next = 1'b0;
-                mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // ucitavamo samo najnizih ADDR_WIDTH bita
+                if(load_memory_wait_reg == 1'b0) begin
+                    mem_we_next = 1'b0;
+                    mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // ucitavamo samo najnizih ADDR_WIDTH bita
 
-                state_next = LOAD_OPA_DONE; 
+                    load_memory_wait_next = 1'b1;
+                    state_next = LOAD_OPA_MEMORY_INDIRECT;
+                end
+                else begin
+                    load_memory_wait_next = 1'b0;
+                    state_next = LOAD_OPA_DONE;
+                end
             end
             LOAD_OPA_DONE: begin
                 opa_ld = 1'b1;
@@ -447,23 +493,38 @@ module cpu #(
                         state_next = INSTR_STOP;
                     end 
                     default:
+                        //out_next = {{DATA_WIDTH}{1'b0}}; // GRESKA
                         state_next = LOAD_IR_HIGH_MEMORY; // GRESKA
                 endcase
             end
             LOAD_OPB_MEMORY: begin
-                mem_we_next = 1'b0;
-                mem_addr_next = ir_opa;
+                if(load_memory_wait_reg == 1'b0) begin
+                    mem_we_next = 1'b0;
+                    mem_addr_next = ir_opa;
 
-                if(ir_opb_type == INDIRECT)
-                    state_next = LOAD_OPB_MEMORY_INDIRECT;
-                else
-                    state_next = LOAD_OPB_DONE;
+                    load_memory_wait_next = 1'b1;
+                    state_next = LOAD_OPB_MEMORY;
+                end
+                else begin
+                    load_memory_wait_next = 1'b0;
+                    if(ir_opb_type == INDIRECT)
+                        state_next = LOAD_OPB_MEMORY_INDIRECT;
+                    else
+                        state_next = LOAD_OPB_DONE;
+                end        
             end
             LOAD_OPB_MEMORY_INDIRECT: begin
-                mem_we_next = 1'b0;
-                mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // ucitavamo samo najnizih ADDR_WIDTH bita
+                if(load_memory_wait_reg == 1'b0) begin
+                    mem_we_next = 1'b0;
+                    mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // ucitavamo samo najnizih ADDR_WIDTH bita
 
-                state_next = LOAD_OPB_DONE; 
+                    load_memory_wait_next = 1'b1;
+                    state_next = LOAD_OPB_MEMORY_INDIRECT;
+                end
+                else begin
+                    load_memory_wait_next = 1'b0;
+                    state_next = LOAD_OPB_DONE; 
+                end  
             end
             LOAD_OPB_DONE: begin
                 opb_ld = 1'b1;
@@ -480,23 +541,38 @@ module cpu #(
                         state_next = LOAD_OPC_MEMORY;
                     end
                     default:
+                        //out_next = {{DATA_WIDTH}{1'b0}}; // GRESKA
                         state_next = LOAD_IR_HIGH_MEMORY; // GRESKA
                 endcase
             end
             LOAD_OPC_MEMORY: begin
-                mem_we_next = 1'b0;
-                mem_addr_next = ir_opc;
+                if(load_memory_wait_reg == 1'b0) begin
+                    mem_we_next = 1'b0;
+                    mem_addr_next = ir_opc;
 
-                if(ir_opc_type == INDIRECT)
-                    state_next = LOAD_OPC_MEMORY_INDIRECT;
-                else
-                    state_next = LOAD_OPC_DONE;
+                    load_memory_wait_next = 1'b1;
+                    state_next = LOAD_OPB_MEMORY;
+                end
+                else begin
+                    load_memory_wait_next = 1'b0;
+                    if(ir_opc_type == INDIRECT)
+                        state_next = LOAD_OPC_MEMORY_INDIRECT;
+                    else
+                        state_next = LOAD_OPC_DONE;
+                end
             end
             LOAD_OPC_MEMORY_INDIRECT: begin
-                mem_we_next = 1'b0;
-                mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // ucitavamo samo najnizih ADDR_WIDTH bita
+                if(load_memory_wait_reg == 1'b0) begin
+                    mem_we_next = 1'b0;
+                    mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // ucitavamo samo najnizih ADDR_WIDTH bita
 
-                state_next = LOAD_OPC_DONE; 
+                    load_memory_wait_next = 1'b1;
+                    state_next = LOAD_OPB_MEMORY;
+                end
+                else begin
+                    load_memory_wait_next = 1'b0;
+                    state_next = LOAD_OPC_DONE; 
+                end   
             end
             LOAD_OPC_DONE: begin
                 opc_ld = 1'b1;
@@ -509,44 +585,60 @@ module cpu #(
                     OC_STOP: begin
                         state_next = STOPC;
                     end
-                    default: 
-                        state_next = LOAD_IR_HIGH_MEMORY; // GRESKA
+                    default:
+                        //out_next = {{DATA_WIDTH}{1'b0}}; // GRESKA
+                        state_next = LOAD_IR_HIGH_MEMORY;
                 endcase
             end
             WRITE_OPA_MEMORY: begin
 
+                //mem_addr_next = {{(ADDR_WIDTH - 3){1'b0}}, ir_opa};
                 mem_addr_next = ir_opa;
-
+                //out_next = ir_opa;
+                
                 if(ir_opa_type == INDIRECT) begin
-                    mem_we_next = 1'b0;
-                    state_next = WRITE_OPA_MEMORY_INDIRECT;
+                    // cekamo samo ako je indirektno, ako je direktno ne moramo da cekamo na upis
+
+                    if(load_memory_wait_reg == 1'b0) begin
+                        mem_we_next = 1'b0;
+
+                        load_memory_wait_next = 1'b1;
+                        state_next = WRITE_OPA_MEMORY;
+                    end
+                    else begin
+                        load_memory_wait_next = 1'b0;
+                        state_next = WRITE_OPA_MEMORY_INDIRECT; 
+                    end
                 end
                 else begin
                     mem_we_next = 1'b1;
                     
                     case (ir_oc)
                         OC_IN: begin
-                            mem_data_next = in;
+                            
                         end
                         OC_MOV: begin
                             if(ir_opc_type == INDIRECT)
                                 mem_data_next = ir_low_out;
                             else
                                 mem_data_next = opb_out;
+
+                            state_next = WRITE_OPA_DONE; 
                         end
                         OC_ADD, OC_SUB, OC_MUL: begin
                             mem_data_next = alu_out_reg;
+                            state_next = WRITE_OPA_DONE; 
                         end
-                        default:
-                            state_next = LOAD_IR_HIGH_MEMORY; // GRESKA 
-                    endcase
-
-                    state_next = WRITE_OPA_DONE;
+                        default: begin
+                            //out_next = {{DATA_WIDTH}{1'b1}}; // GRESKA
+                            state_next = LOAD_IR_HIGH_MEMORY; // DIV TRENUTNO NE RADI NISTA
+                        end  
+                    endcase    
                 end
             end
             WRITE_OPA_MEMORY_INDIRECT: begin
                 mem_we_next = 1'b1;
-                mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // ucitavamo samo najnizih ADDR_WIDTH bita
+                mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // upisujemo samo najnizih ADDR_WIDTH bita
                 
                case (ir_oc)
                     OC_IN: begin
@@ -561,12 +653,14 @@ module cpu #(
                     OC_ADD, OC_SUB, OC_MUL: begin
                         mem_data_next = alu_out_reg;
                     end
-                    default:
-                        state_next = LOAD_IR_HIGH_MEMORY; // GRESKA 
+                    default: begin
+                        //out_next = {{DATA_WIDTH}{1'b0}}; // GRESKA
+                        state_next = LOAD_IR_HIGH_MEMORY;
+                    end
                 endcase
             end
             WRITE_OPA_DONE: begin
-                out_next = mem_in;
+                mem_we_next = 1'b0;
                 state_next = LOAD_IR_HIGH_MEMORY;
             end
             INSTR_ALU: begin
@@ -587,7 +681,8 @@ module cpu #(
                         state_next = WRITE_OPA_MEMORY;
                     end
                     default:
-                        state_next = LOAD_IR_HIGH_MEMORY; // GRESKA
+                        //out_next = {{DATA_WIDTH}{1'b0}}; // GRESKA
+                        state_next = LOAD_IR_HIGH_MEMORY;
                 endcase
 
                 alu_out_next = alu_out; // pamtimo stanje alu u registar
