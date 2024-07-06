@@ -355,8 +355,8 @@ module cpu #(
 
         out_next = {DATA_WIDTH{1'b0}};
 
-        sp_in = state_reg;
-        sp_ld = 1'b1;
+        //sp_in = state_reg;
+        //sp_ld = 1'b1;
 
         case (state_reg)
             INIT: begin
