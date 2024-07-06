@@ -353,7 +353,7 @@ module cpu #(
         opb_in = {DATA_WIDTH{1'b0}};
         opc_in = {DATA_WIDTH{1'b0}};
 
-        out_next = out_reg;
+        out_next = {DATA_WIDTH{1'b0}};
 
         sp_in = state_reg;
         sp_ld = 1'b1;
@@ -500,7 +500,7 @@ module cpu #(
             LOAD_OPB_MEMORY: begin
                 if(load_memory_wait_reg == 1'b0) begin
                     mem_we_next = 1'b0;
-                    mem_addr_next = ir_opa;
+                    mem_addr_next = ir_opb;
 
                     load_memory_wait_next = 1'b1;
                     state_next = LOAD_OPB_MEMORY;
@@ -551,7 +551,7 @@ module cpu #(
                     mem_addr_next = ir_opc;
 
                     load_memory_wait_next = 1'b1;
-                    state_next = LOAD_OPB_MEMORY;
+                    state_next = LOAD_OPC_MEMORY;
                 end
                 else begin
                     load_memory_wait_next = 1'b0;
@@ -567,7 +567,7 @@ module cpu #(
                     mem_addr_next = mem_in[ADDR_WIDTH-1:0]; // ucitavamo samo najnizih ADDR_WIDTH bita
 
                     load_memory_wait_next = 1'b1;
-                    state_next = LOAD_OPB_MEMORY;
+                    state_next = LOAD_OPC_MEMORY_INDIRECT;
                 end
                 else begin
                     load_memory_wait_next = 1'b0;
@@ -615,7 +615,8 @@ module cpu #(
                     
                     case (ir_oc)
                         OC_IN: begin
-                            
+                            mem_data_next = in;
+                            state_next = WRITE_OPA_DONE; 
                         end
                         OC_MOV: begin
                             if(ir_opc_type == INDIRECT)
@@ -677,7 +678,7 @@ module cpu #(
                         state_next = WRITE_OPA_MEMORY;
                     end
                     OC_MUL: begin
-                        alu_oc = ALU_SUB;
+                        alu_oc = ALU_MUL;
                         state_next = WRITE_OPA_MEMORY;
                     end
                     default:
