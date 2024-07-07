@@ -50,7 +50,7 @@ class generator extends uvm_sequence;
         super.new(name);
     endfunction
 
-    int num = 20; // moze se promeniti broj testiranih item-a
+    int num = 100; // moze se promeniti broj testiranih item-a
 
     virtual task body();
         for (int i = 0; i < num; i++) begin
